@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#071b32">
+<title>FACECARE AI — Mobile Prototype</title>
+<style>
+:root{--bg:#071b32;--panel:#102a46;--cyan:#48d8d0;--blue:#54a9ff;--text:#f3f8ff;--muted:#a9bdd1;--line:#254663}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(160deg,#071b32,#0b2744 65%,#071b32);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:680px;margin:auto;padding:20px 16px 40px}
+header{text-align:center;padding:12px 0 18px}
+.logo{font-size:12px;letter-spacing:3px;color:var(--cyan);font-weight:800}
+h1{font-size:31px;line-height:1.1;margin:8px 0 6px}h1 span{color:var(--cyan)}
+.sub{color:var(--muted);font-size:14px}
+.card{background:rgba(16,42,70,.92);border:1px solid var(--line);border-radius:20px;padding:16px;margin:14px 0;box-shadow:0 10px 30px #0002}
+.camera-wrap{position:relative;overflow:hidden;border-radius:16px;background:#020b15;aspect-ratio:4/5;max-height:430px}
+video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
+.overlay{position:absolute;inset:14% 16%;border:2px solid #48d8d0aa;border-radius:45% 45% 42% 42%;box-shadow:0 0 0 999px #00101b44;pointer-events:none}
+.hint{position:absolute;bottom:12px;left:10px;right:10px;text-align:center;background:#06182bd9;border-radius:12px;padding:9px;font-size:12px;color:#d9f5f4}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+button{border:0;border-radius:13px;padding:14px 16px;font-weight:750;font-size:15px;flex:1;min-width:130px;background:var(--cyan);color:#062238}
+button.secondary{background:#203f5d;color:var(--text);border:1px solid #42617d}
+button:disabled{opacity:.45}
+.status{font-size:13px;color:var(--muted);line-height:1.5}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.metric{background:#0a2038;border:1px solid var(--line);border-radius:15px;padding:14px}
+.metric .label{color:var(--muted);font-size:12px}
+.metric .value{font-size:28px;font-weight:800;margin-top:5px}
+.metric small{color:var(--muted)}
+.pill{display:inline-block;padding:5px 9px;border-radius:99px;background:#173d56;color:#9eece5;font-size:11px;font-weight:700}
+canvas{width:100%;height:100px;background:#081a2d;border-radius:10px}
+ul{padding-left:19px;color:var(--muted);font-size:13px;line-height:1.7}
+.note{font-size:12px;color:#b9cadd;line-height:1.6}
+footer{text-align:center;color:#819bb4;font-size:11px;margin-top:20px}
+</style>
+</head>
+<body>
+<main>
+<header>
+ <div class="logo">STUDENT INNOVATION • TECHTANK</div>
+ <h1>FACECARE <span>AI</span></h1>
+ <div class="sub">Contactless health-monitoring research prototype</div>
+</header>
+
+<section class="card">
+ <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+  <strong>Live face scan</strong><span class="pill">V1 • EXPERIMENTAL</span>
+ </div>
+ <div class="camera-wrap">
+  <video id="video" autoplay muted playsinline></video>
+  <div class="overlay"></div>
+  <div class="hint" id="hint">Place your face in the frame • Use steady, even lighting</div>
+ </div>
+ <div class="row">
+  <button id="cameraBtn">Open front camera</button>
+  <button id="startBtn" class="secondary" disabled>Start 40-sec scan</button>
+  <button id="stopBtn" class="secondary" disabled>Stop</button>
+ </div>
+ <p class="status" id="status" aria-live="polite">Camera is off. Allow camera access when your browser asks.</p>
+</section>
+
+<section class="card">
+ <strong>Prototype results</strong>
+ <div class="metrics" style="margin-top:12px">
+  <div class="metric"><div class="label">Pulse estimate</div><div class="value" id="bpm">—</div><small>BPM • experimental</small></div>
+  <div class="metric"><div class="label">Signal quality</div><div class="value" id="quality">—</div><small id="qualityText">Waiting for scan</small></div>
+ </div>
+ <div style="margin-top:14px"><div class="label" style="font-size:12px;color:var(--muted);margin-bottom:7px">Green-channel signal (raw)</div><canvas id="chart" width="600" height="130"></canvas></div>
+</section>
+
+<section class="card">
+ <strong>How to get a better experiment</strong>
+ <ul>
+  <li>Use bright, steady lighting; avoid direct sunlight and flickering lights.</li>
+  <li>Keep the phone steady and your face still, inside the guide.</li>
+  <li>Remove strong filters; do not cover the camera.</li>
+  <li>Try again if the signal quality is low.</li>
+ </ul>
+ <p class="note"><b>Important:</b> This student demo uses a simplified camera-colour signal and is not clinically validated. It may show an incorrect estimate or no result. It cannot diagnose, screen for disease, or replace a medical device. Do not use its output to make health decisions.</p>
+</section>
+<footer>FACECARE AI • Student prototype • No video is uploaded or stored by this page.</footer>
+</main>
+<script>
+const video=document.getElementById('video'), cameraBtn=document.getElementById('cameraBtn'), startBtn=document.getElementById('startBtn'), stopBtn=document.getElementById('stopBtn');
+const statusEl=document.getElementById('status'), hint=document.getElementById('hint'), bpmEl=document.getElementById('bpm'), qualityEl=document.getElementById('quality'), qualityText=document.getElementById('qualityText');
+const canvas=document.getElementById('chart'), ctx=canvas.getContext('2d');
+let stream=null, timer=null, samples=[], scanStart=0, raf=null, scanning=false;
+const work=document.createElement('canvas'), wctx=work.getContext('2d',{willReadFrequently:true});
+work.width=160;work.height=120;
+function say(s){statusEl.textContent=s}
+cameraBtn.onclick=async()=>{
+ try{
+  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640},height:{ideal:480}},audio:false});
+  video.srcObject=stream; await video.play(); startBtn.disabled=false; cameraBtn.textContent='Camera ready'; say('Camera is ready. Center your face and keep still.'); hint.textContent='Keep your face inside the guide • steady light • stay still';
+ }catch(e){say('Could not open camera: '+e.message+'. Use Safari/Chrome on HTTPS and allow camera permission.');}
+};
+function drawChart(){
+ ctx.clearRect(0,0,canvas.width,canvas.height);ctx.strokeStyle='#24445e';ctx.lineWidth=1;
+ for(let y=20;y<130;y+=30){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(600,y);ctx.stroke();}
+ if(samples.length<2)return;
+ const arr=samples.slice(-300), vals=arr.map(x=>x.g), mn=Math.min(...vals),mx=Math.max(...vals),range=Math.max(mx-mn,1);
+ ctx.strokeStyle='#48d8d0';ctx.lineWidth=2;ctx.beginPath();
+ vals.forEach((v,i)=>{let x=i/(Math.max(vals.length-1,1))*600,y=112-(v-mn)/range*90;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y)});ctx.stroke();
+}
+function sample(){
+  // Keep the animation loop alive even if the video is briefly not ready.
+  if(!scanning)return;
+
+  if(video.readyState>=2 && video.videoWidth>0 && video.videoHeight>0){
+    wctx.drawImage(video,0,0,160,120);
+    // Central cheek/forehead approximation; user aligns face within guide.
+    const d=wctx.getImageData(48,24,64,72).data;let r=0,g=0,b=0,n=d.length/4;
+    for(let i=0;i<d.length;i+=4){r+=d[i];g+=d[i+1];b+=d[i+2]}
+    samples.push({t:performance.now()/1000,r:r/n,g:g/n,b:b/n});
+    if(samples.length>900)samples.shift();
+    if(samples.length%8===0)drawChart();
+  }
+
+  const elapsed=(performance.now()-scanStart)/1000;
+  say('Collecting camera signal… '+Math.min(40,Math.floor(elapsed))+' / 40 seconds. Keep still.');
+  if(elapsed>=40){
+    finishScan();
+    return;
+  }
+  // Always schedule another frame. Previously, a brief video-not-ready state
+  // on the first frame caused the scan loop to stop permanently.
+  raf=requestAnimationFrame(sample);
+}
+function finishScan(){
+ scanning=false;cancelAnimationFrame(raf);stopBtn.disabled=true;startBtn.disabled=false;
+ const s=samples.slice(-Math.min(samples.length,900));
+ if(s.length<300){say('Not enough usable frames. Please try again with better lighting.');qualityEl.textContent='Low';qualityText.textContent='Insufficient data';return;}
+ const dt=(s[s.length-1].t-s[0].t)/(s.length-1), fs=1/dt;
+ // Detrend green signal with a moving average, then estimate dominant frequency by autocorrelation.
+ const x=s.map(a=>a.g), win=Math.max(3,Math.round(fs*1.5)), y=[];
+ let sum=0,q=[];
+ for(let i=0;i<x.length;i++){sum+=x[i];q.push(x[i]);if(q.length>win)sum-=q.shift();y.push(x[i]-sum/q.length);}
+ const mean=y.reduce((a,b)=>a+b,0)/y.length;for(let i=0;i<y.length;i++)y[i]-=mean;
+ let energy=y.reduce((a,b)=>a+b*b,0)/y.length;
+ let bestLag=0,best=-Infinity;
+ const minLag=Math.floor(fs*60/180),maxLag=Math.min(Math.floor(fs*60/45),Math.floor(y.length/2));
+ for(let lag=minLag;lag<=maxLag;lag++){let c=0;for(let i=0;i<y.length-lag;i++)c+=y[i]*y[i+lag];c/=y.length-lag;if(c>best){best=c;bestLag=lag;}}
+ const confidence=energy>0?Math.max(0,Math.min(100,Math.round(best/energy*100))):0;
+ const estimate=bestLag?Math.round(60*fs/bestLag):0;
+ qualityEl.textContent=confidence>=35?'Fair':'Low';qualityText.textContent='Experimental signal score';
+ if(estimate>=45&&estimate<=180&&confidence>=35){bpmEl.textContent=estimate;say('Scan complete. This is an experimental estimate only; compare with a validated reference device for your project testing.');}
+ else{bpmEl.textContent='—';say('No reliable estimate from this scan. Improve lighting, keep still, and try again.');}
+ drawChart();
+}
+startBtn.onclick=()=>{
+ if(!stream){say('Open the camera first.');return;}
+ samples=[];scanning=true;scanStart=performance.now();startBtn.disabled=true;stopBtn.disabled=false;bpmEl.textContent='…';qualityEl.textContent='…';qualityText.textContent='Analyzing';say('Starting scan…');raf=requestAnimationFrame(sample);
+};
+stopBtn.onclick=()=>{scanning=false;if(raf!==null)cancelAnimationFrame(raf);raf=null;stopBtn.disabled=true;startBtn.disabled=false;say('Scan stopped. Camera remains on; start a new scan when ready.');};
+window.addEventListener('beforeunload',()=>{if(stream)stream.getTracks().forEach(t=>t.stop())});
+drawChart();
+</script>
+</body>
+</html>
